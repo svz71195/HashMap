@@ -3,8 +3,16 @@
 #include <string.h>
 
 #define KEY_LEN 32
-#define INITIAL_CAPACITY 32
+#define INITIAL_CAPACITY 64
 #define FILL_FACTOR 0.75
+
+enum hash_status
+{
+	UNUSED,
+	ISUSED,
+	DELETED
+};
+
 
 typedef enum
 {
@@ -26,7 +34,7 @@ typedef struct
 	char key[KEY_LEN];
 	ValueType type;
 	ValueData value;
-	int in_use;
+	short status;
 } Entry_t;
 
 
@@ -44,3 +52,4 @@ void map_free(HashMap_t* m);
 int map_set(HashMap_t* m, const char* key, ValueType type, ValueData val);
 Entry_t* map_get(HashMap_t* m, const char* key);
 int map_delete(HashMap_t* m, const char* key);
+void map_print(HashMap_t *m);

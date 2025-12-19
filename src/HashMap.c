@@ -21,43 +21,42 @@ static size_t hash(const char* key)
  * @param m HashMap to resize
  * @param new_capacity
  */
-static int map_resize(HashMap_t* m, size_t new_capacity)
+static HashMap_t *map_resize(HashMap_t* m, size_t new_capacity)
 {
-	HashMap_t* old = m;
+	HashMap_t *new = {0};
+	map_init(&new, new_capacity);
 
-	// possible pointer ivalidation of 'old_table'?
-	m = calloc(sizeof(HashMap_t) + new_capacity * sizeof(Entry_t), 1);
-
-	if (!m) {
-		return 0;  // failed resize
-	}
-
-	m->capacity = new_capacity;
-
-	for (size_t i = 0; i < old->capacity; i++) {
-		if (old->table[i].in_use) {
+	for (size_t i = 0; i < m->capacity; i++)
+	{
+		if (m->table[i].status == ISUSED)
+		{
 			// reinsert into new table
-			ValueData v = old->table[i].value;
-			map_set(m, old->table[i].key, old->table[i].type, v);
+			map_set(&new, m->table[i].key, m->table[i].type, m->table[i].value);
 		}
 	}
 
-	free(old);
+	map_free(m);
 
 	return 1;  // success
 }
 
 
-int map_init(HashMap_t* m)
+int map_init(HashMap_t *handle[static 1], size_t capacity)
 {
 	// ensure one contiguous block of memory and less memory fragmentation
-	m = calloc(sizeof(HashMap_t) + INITIAL_CAPACITY * sizeof(Entry_t), 1);
-
-	if (!m) {
-		return 0;  // failed alloc
+	if (*handle != NULL)
+	{
+		return 0;
 	}
 
-	m->capacity = INITIAL_CAPACITY;
+	capacity = capacity <= 0 ? INITIAL_CAPACITY : capacity;
+
+	*handle = malloc(sizeof(**handle) + sizeof(Entry_t[capacity]));
+
+	if (*handle != NULL)
+	{
+		**handle = (HashMap_t){.capacity = capacity};
+	}
 
 	return 1;
 }
@@ -72,12 +71,14 @@ void map_free(HashMap_t* m)
 }
 
 
-int map_set(HashMap_t* m, const char* key, ValueType type, ValueData val)
+int map_set(HashMap_t* handle[static 1], const char* key, ValueType type, ValueData val)
 {
+	HashMap_t *m = *handle;
+
 	if ((m->size + 1) > (size_t)(m->capacity * FILL_FACTOR)) {
-		int status = map_resize(m, m->capacity * 2);
-		if (!status) {
-			return status;
+		*handle = m = map_resize(m, m->capacity * 2);
+		if (!m) {
+			return 0;
 		}
 	}
 
@@ -88,18 +89,18 @@ int map_set(HashMap_t* m, const char* key, ValueType type, ValueData val)
 		Entry_t* e = &m->table[probe];
 
 		// Insert in unused slot
-		if (!e->in_use) {
+		if (e->status != ISUSED) {
 			strncpy(e->key, key, sizeof(e->key));
 			e->key[KEY_LEN - 1] = '\0';
 			e->type = type;
 			e->value = val;
-			e->in_use = 1;
+			e->status = ISUSED;
 			m->size++;
 			return 1;
 		}
 
 		// Update existing key
-		if (strcmp(e->key, key) == 0) {
+		if (hash(e->key) == idx) {
 			e->type = type;
 			e->value = val;
 			return 1;
@@ -121,11 +122,11 @@ Entry_t* map_get(HashMap_t* m, const char* key)
 
 		// Could happen, if entry was deleted
 		// A different key matching this index can now overwrite
-		if (!e->in_use) {
+		if (e->status == UNUSED) {
 			return NULL;
 		};
 
-		if (e->in_use && strcmp(e->key, key) == 0)
+		if ((e->status == ISUSED) && (hash(e->key) == idx))
 			return e;
 	}
 
@@ -141,16 +142,44 @@ int map_delete(HashMap_t* m, const char* key)
 		size_t probe = (idx + i) % m->capacity;
 		Entry_t* e = &m->table[probe];
 
-		if (!e->in_use) {
+		if (e->status != ISUSED) {
 			return 0;
 		}
-
-		if (e->in_use && strcmp(e->key, key) == 0) {
-			e->in_use = 0;
+		else if (hash(e->key) == idx) {
+			e->status = DELETED;
 			e->value = (ValueData){};  // What about ownership of pointers?
 			m->size--;
 			return 1;
 		}
 	}
 	return 0;  // Deletion failed
+}
+
+
+void map_print(HashMap_t *m)
+{
+	puts("--- Contents of map ---");
+	printf("|cap = %lu | size = %lu|\n", m->capacity, m->size);
+
+	for (size_t i = 0; i < m->capacity; i++)
+	{
+		if (m->table[i].status == ISUSED)
+		{
+			switch (m->table[i].type) {
+				case TYPE_INT:
+					printf("%lu '%.*s': %d\n", i, (int)KEY_LEN, m->table[i].key, *(m->table[i].value.i) );
+					break;
+				case TYPE_FLOAT:
+					printf("%lu '%.*s': %f\n", i, (int)KEY_LEN, m->table[i].key, *(m->table[i].value.f) );
+					break;
+				case TYPE_STRING:
+					printf("%lu '%.*s': %s\n", i, (int)KEY_LEN, m->table[i].key, m->table[i].value.s  );
+					break;
+			}
+		}
+	}
+
+	puts("--- End of map ---");
+
+	return;
 }
